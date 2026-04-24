@@ -647,6 +647,25 @@ enforce_symlinks() {
 			printf "${color_warn}WARNING: File or directory exists at both \`${proc_link}\` and \`${proc_tgt}\`.  Bedrock Linux expects only one to exist.  Inspect both and determine which you wish to keep, then remove the other, and finally run \`brl repair ${stratum}\` to remedy the situation.${color_norm}\\n"
 		fi
 	done
+
+	enforce_bedrock_api_mount_generator "${stratum}"
+}
+
+enforce_bedrock_api_mount_generator() {
+	# Keep this independent of bedrock.conf so upgraded systems with
+	# preserved old configs still get the required generator.
+	stratum="${1}"
+	root="$(stratum_root --empty "${stratum}")"
+	link="/proc/1/root${root}/etc/systemd/system-generators/bedrock-api-mount-generator"
+	tgt="/bedrock/share/systemd/bedrock-api-mount-generator"
+	cur_tgt="$(readlink "${link}")" || true
+
+	[ "${cur_tgt}" = "${tgt}" ] && return
+	[ -e "${link}" ] && ! [ -h "${link}" ] && return
+
+	mkdir -p "$(dirname "${link}")"
+	rm -f "${link}"
+	ln -s "${tgt}" "${link}"
 }
 
 enforce_shells() {
@@ -939,6 +958,12 @@ stinit() {
 	cmd="${1}"
 	shift
 	/bedrock/bin/strat init "/bedrock/libexec/${cmd}" "${@:-}"
+}
+
+systemd_daemon_reload() {
+	# Re-run generators after Bedrock changes mount topology.
+	[ -d /proc/1/root/run/systemd/system ] || return 0
+	/bedrock/bin/strat init systemctl daemon-reload >/dev/null 2>&1 || true
 }
 
 # Kill all processes chrooted into the specified directory or a subdirectory
