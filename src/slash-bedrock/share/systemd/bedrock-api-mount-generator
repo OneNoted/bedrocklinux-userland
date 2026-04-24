@@ -1,11 +1,12 @@
 #!/bedrock/libexec/busybox sh
 #
 # systemd creates generated .mount units for entries in /proc/self/mountinfo.
-# Bedrock's per-stratum API filesystem mirrors and implementation mounts
-# should not be stopped like ordinary local filesystems during umount.target.
+# Bedrock's per-stratum API filesystem mirrors, implementation mounts, and
+# global kernel modules mount should not be stopped like ordinary local
+# filesystems during umount.target.
 
 [ "${SYSTEMD_IN_INITRD:-0}" = "1" ] && exit 0
-command -v systemd-escape >/dev/null 2>&1 || exit 0
+command -v systemd-escape > /dev/null 2>&1 || exit 0
 
 out="${1:-}"
 [ -n "${out}" ] || exit 0
@@ -41,7 +42,7 @@ write_dropin_for_unit() {
 		printf '# %s\n' "${description}"
 		printf '%s\n' '[Unit]'
 		printf '%s\n' 'DefaultDependencies=no'
-	} >"${dir}/${dropin}"
+	} > "${dir}/${dropin}"
 }
 
 write_api_dropin() {
@@ -69,8 +70,8 @@ write_implementation_parent_dropin() {
 	mount_point="${1}"
 
 	case "${mount_point}" in
-	/bedrock/strata/*) ;;
-	*) return ;;
+		/bedrock/strata/*) ;;
+		*) return ;;
 	esac
 
 	relative="${mount_point#/bedrock/strata/}"
@@ -80,12 +81,19 @@ write_implementation_parent_dropin() {
 	write_implementation_dropin "/bedrock/strata/${stratum}/bedrock"
 }
 
+write_global_modules_dropin() {
+	write_dropin \
+		"${1}" \
+		"50-bedrock-global-modules.conf" \
+		"Bedrock's global kernel modules mount must not be stopped as an ordinary local mount."
+}
+
 process_api_mount() {
 	mount_point="${1}"
 
 	case "${mount_point}" in
-	/bedrock/strata/*/*) ;;
-	*) return ;;
+		/bedrock/strata/*/*) ;;
+		*) return ;;
 	esac
 
 	relative="${mount_point#/bedrock/strata/}"
@@ -97,8 +105,8 @@ process_api_mount() {
 	[ -n "${stratum}" ] || return
 
 	case "${api_root}" in
-	dev | proc | run | sys) ;;
-	*) return ;;
+		dev | proc | run | sys) ;;
+		*) return ;;
 	esac
 
 	write_api_dropin "${mount_point}"
@@ -112,34 +120,56 @@ process_implementation_mount() {
 	fs_type="${2}"
 
 	case "${mount_point}:${fs_type}" in
-	/etc:fuse.etcfs | \
-		/bedrock/cross:fuse.crossfs | \
-		/bedrock/run:tmpfs | \
-		/bedrock/strata/*/etc:fuse.etcfs)
-		write_implementation_dropin "${mount_point}"
-		;;
-	/bedrock/strata/*/bedrock/cross:fuse.crossfs | \
-		/bedrock/strata/*/bedrock/run:tmpfs)
-		write_implementation_dropin "${mount_point}"
-		write_implementation_parent_dropin "${mount_point}"
-		;;
-	esac
-
-	case "${mount_point}" in
-	/bedrock/strata/*)
-		relative="${mount_point#/bedrock/strata/}"
-		implementation_path="${relative#*/}"
-
-		case "${implementation_path}" in
-		bedrock)
+		/etc:fuse.etcfs | \
+			/bedrock/cross:fuse.crossfs | \
+			/bedrock/run:tmpfs | \
+			/bedrock/strata/*/etc:fuse.etcfs)
 			write_implementation_dropin "${mount_point}"
 			;;
-		bedrock/strata/bedrock)
+		/bedrock/strata/*/bedrock/cross:fuse.crossfs | \
+			/bedrock/strata/*/bedrock/run:tmpfs)
 			write_implementation_dropin "${mount_point}"
 			write_implementation_parent_dropin "${mount_point}"
 			;;
-		esac
-		;;
+	esac
+
+	case "${mount_point}" in
+		/bedrock/strata/*)
+			relative="${mount_point#/bedrock/strata/}"
+			implementation_path="${relative#*/}"
+
+			case "${implementation_path}" in
+				bedrock)
+					write_implementation_dropin "${mount_point}"
+					;;
+				bedrock/strata/bedrock)
+					write_implementation_dropin "${mount_point}"
+					write_implementation_parent_dropin "${mount_point}"
+					;;
+			esac
+			;;
+	esac
+}
+
+process_global_modules_mount() {
+	mount_point="${1}"
+
+	case "${mount_point}" in
+		/lib/modules | /usr/lib/modules)
+			write_global_modules_dropin "${mount_point}"
+			return
+			;;
+		/bedrock/strata/*) ;;
+		*) return ;;
+	esac
+
+	relative="${mount_point#/bedrock/strata/}"
+	modules_path="${relative#*/}"
+
+	case "${modules_path}" in
+		lib/modules | usr/lib/modules)
+			write_global_modules_dropin "${mount_point}"
+			;;
 	esac
 }
 
@@ -153,4 +183,5 @@ awk '{
 }' /proc/self/mountinfo | while read -r mount_point fs_type; do
 	process_api_mount "${mount_point}"
 	process_implementation_mount "${mount_point}" "${fs_type}"
+	process_global_modules_mount "${mount_point}"
 done
