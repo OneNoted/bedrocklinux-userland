@@ -123,4 +123,6 @@ for alias in "${@}"; do
 	fi
 done
 
+systemd_daemon_reload
+
 exit_success

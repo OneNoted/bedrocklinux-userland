@@ -327,4 +327,6 @@ for alias in ${strata}; do
 	fi
 done
 
+systemd_daemon_reload
+
 exit_success

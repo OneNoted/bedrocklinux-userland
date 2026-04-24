@@ -903,6 +903,7 @@ $(BUILD)/userland.tar: \
 	chmod 700 $(SLASHBR)/gnupg-keys
 	chmod 600 $(SLASHBR)/gnupg-keys/*
 	chmod 755 $(SLASHBR)/share/resolvconf/00bedrock
+	chmod 755 $(SLASHBR)/share/systemd/bedrock-api-mount-generator
 	chmod 755 $(BUILD)/sbin/init
 	# create symlinks
 	ln -s ../bin/strat $(SLASHBR)/libexec/brl-strat

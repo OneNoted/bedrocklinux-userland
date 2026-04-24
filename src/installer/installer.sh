@@ -501,6 +501,11 @@ update() {
 		brl show --pmm $(brl list -ed)
 	fi
 
+	for stratum in $(/bedrock/bin/brl list -ei); do
+		enforce_bedrock_api_mount_generator "${stratum}"
+	done
+	systemd_daemon_reload
+
 	notice "Successfully updated to ${new_version}"
 
 	if ver_cmp_first_newer "0.7.0beta3" "${current_version}"; then
